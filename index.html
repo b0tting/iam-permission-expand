@@ -9,7 +9,7 @@
 body{font-family:'Roboto',sans-serif;background:#f7f9fa;margin:0}
 .container{max-width:700px;margin:40px auto;background:#fff;border-radius:6px;box-shadow:0 2px 8px #0001;padding:24px}
 h1{font-size:1.5rem}
-input[type="text"],#policy-text{width:100%;font-size:1rem;font-family:'Roboto',sans-serif}
+input[type="text"],#policy-text{width:100%;font-size:1rem;font-family:'Roboto',sans-serif;background-color:#f0f0f0;border:1px solid #ccc;padding:8px;border-radius:4px;box-sizing:border-box}
 input[type="text"]{margin-bottom:16px}
 ul{padding:0}
 li{padding:6px 0;border-bottom:1px solid #eee;list-style:none}
@@ -39,7 +39,7 @@ li{padding:6px 0;border-bottom:1px solid #eee;list-style:none}
       <div class="modal-content">
         <button id="close-modal">&times;</button>
         <h3>Example IAM Policy</h3>
-        <textarea id="policy-text" readonly></textarea>
+        <textarea id="policy-text"></textarea>
         <div id="policy-charcount" style="margin-top:4px;font-size:0.95em;color:#555;"></div>
         <div id="policy-warning" class="error" style="display:none;margin-top:2px;">Warning: Policy exceeds 6144 characters (excluding spaces and linebreaks)!</div>
         <button id="copy-policy">Copy to Clipboard</button>
@@ -96,8 +96,8 @@ function filterPermissions(permissions, query) {
         const re = wildcardToRegExp(query);
         return permissions.filter(p => re.test(p));
     }
-    // Otherwise, substring match
-    return permissions.filter(p => p.toLowerCase().includes(query.toLowerCase()));
+    // Otherwise, show only exact matches
+    return permissions.filter(p => p.toLowerCase() === query.toLowerCase());
 }
 
 function renderResults(list) {
@@ -144,6 +144,12 @@ function renderResults(list) {
         const filtered = filterPermissions(permissions, query);
         renderResults(filtered);
     }
+    input.addEventListener('focus', () => {
+        if (input.value === '') {
+            input.value = '*';
+            input.setSelectionRange(0, 0);
+        }
+    });
     input.addEventListener('input', update);
     renderResults(permissions);
 
