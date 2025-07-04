@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS IAM Permission Search</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,500&display=swap" rel="stylesheet">
+    <style>
+body{font-family:'Roboto',sans-serif;background:#f7f9fa;margin:0}
+.container{max-width:700px;margin:40px auto;background:#fff;border-radius:6px;box-shadow:0 2px 8px #0001;padding:24px}
+h1{font-size:1.5rem}
+input[type="text"],#policy-text{width:100%;font-size:1rem;font-family:'Roboto',sans-serif}
+input[type="text"]{margin-bottom:16px}
+ul{padding:0}
+li{padding:6px 0;border-bottom:1px solid #eee;list-style:none}
+.count{color:#888;font-size:.95em}
+.error{color:#c00}
+#modal{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#0008;z-index:1000;align-items:center;justify-content:center}
+#modal.active{display:flex}
+#modal .modal-content{background:#fff;padding:24px;border-radius:8px;width:80vw;height:80vh;max-width:80vw;max-height:80vh;overflow:auto;position:relative}
+#close-modal{position:absolute;top:8px;right:8px;background:none;border:none;font-size:1.5em;cursor:pointer}
+#policy-text{height:65vh;width:100%;font-family:'Roboto',monospace}
+#copy-policy{margin-top:8px}
+.leader{display:flex;gap:8px;align-items:center}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>AWS IAM Permission Expander</h1>
+    <h4>Show all permissions that will be given when using an IAM wildcard, based on the IAM permission list from <a href="https://github.com/iann0036/iam-dataset">iann0036/iam-dataset</a></h4>
+    <div class="leader">
+        <input id="search" type="text" placeholder="Search permissions (e.g. s3:*, s3:*Access*, *:*List, ec2)" autocomplete="off" />
+        <button id="gen-policy" type="button">Generate Policy</button>
+    </div>
+    <div class="count" id="count"></div>
+    <div class="error" id="error"></div>
+    <ul id="results"></ul>
+    <div id="modal">
+      <div class="modal-content">
+        <button id="close-modal">&times;</button>
+        <h3>Example IAM Policy</h3>
+        <textarea id="policy-text" readonly></textarea>
+        <button id="copy-policy">Copy to Clipboard</button>
+      </div>
+    </div>
+</div>
+<script>
+async function loadPermissions() {
+    try {
+        const response = await fetch('https://raw.githubusercontent.com/iann0036/iam-dataset/refs/heads/main/aws/map.json');
+        if (!response.ok) throw new Error('Failed to load map.json');
+        const data = await response.json();
+        const mappings = data.sdk_method_iam_mappings || {};
+        // Extract all unique permission names
+        const permissions = new Set();
+        Object.values(mappings).forEach(val => {
+            if (Array.isArray(val)) {
+                val.forEach(item => {
+                    if (typeof item === 'string') {
+                        permissions.add(item);
+                    } else if (item && typeof item === 'object' && item.action) {
+                        permissions.add(item.action);
+                    }
+                });
+            } else if (typeof val === 'string') {
+                permissions.add(val);
+            } else if (val && typeof val === 'object' && val.action) {
+                permissions.add(val.action);
+            }
+        });
+        return Array.from(permissions).sort();
+    } catch (e) {
+        document.getElementById('error').textContent = e.message;
+        return [];
+    }
+}
+
+function wildcardToRegExp(pattern) {
+    // Escape regex special chars except *
+    const esc = pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
+    // Replace * with .*
+    return new RegExp('^' + esc.replace(/\*/g, '.*') + '$', 'i');
+}
+
+function filterPermissions(permissions, query) {
+    if (!query) return permissions;
+    query = query.trim();
+    // If only service name (e.g. s3), show all permissions for that service
+    if (/^[a-z0-9]+$/i.test(query)) {
+        return permissions.filter(p => p.toLowerCase().startsWith(query.toLowerCase() + ':'));
+    }
+    // If contains *, treat as wildcard
+    if (query.includes('*')) {
+        const re = wildcardToRegExp(query);
+        return permissions.filter(p => re.test(p));
+    }
+    // Otherwise, substring match
+    return permissions.filter(p => p.toLowerCase().includes(query.toLowerCase()));
+}
+
+function renderResults(list) {
+    const ul = document.getElementById('results');
+    ul.innerHTML = '';
+    list.forEach(p => {
+        const li = document.createElement('li');
+        li.textContent = p;
+        ul.appendChild(li);
+    });
+    document.getElementById('count').textContent = `${list.length} permission(s) found.`;
+}
+
+(async function() {
+    const permissions = await loadPermissions();
+    const input = document.getElementById('search');
+    const errorDiv = document.getElementById('error');
+    const genBtn = document.getElementById('gen-policy');
+    const modal = document.getElementById('modal');
+    const closeModal = document.getElementById('close-modal');
+    const policyText = document.getElementById('policy-text');
+    const copyBtn = document.getElementById('copy-policy');
+
+    function update() {
+        errorDiv.textContent = '';
+        const query = input.value;
+        const filtered = filterPermissions(permissions, query);
+        renderResults(filtered);
+    }
+    input.addEventListener('input', update);
+    renderResults(permissions);
+
+    function buildPolicy(perms) {
+        return JSON.stringify({
+            Version: "2012-10-17",
+            Statement: [
+                {
+                    Effect: "Allow",
+                    Action: perms,
+                    Resource: "*"
+                }
+            ]
+        }, null, 2);
+    }
+
+    genBtn.addEventListener('click', () => {
+        const query = input.value;
+        const filtered = filterPermissions(permissions, query);
+        if (filtered.length === 0) {
+            errorDiv.textContent = 'No permissions to generate policy.';
+            return;
+        }
+        policyText.value = buildPolicy(filtered);
+        modal.classList.add('active');
+    });
+    closeModal.addEventListener('click', () => {
+        modal.classList.remove('active');
+    });
+    copyBtn.addEventListener('click', () => {
+        policyText.select();
+        document.execCommand('copy');
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy to Clipboard'; }, 1200);
+    });
+    // Close modal on outside click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.classList.remove('active');
+    });
+})();
+</script>
+</body>
+</html>
