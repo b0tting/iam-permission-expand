@@ -40,6 +40,8 @@ li{padding:6px 0;border-bottom:1px solid #eee;list-style:none}
         <button id="close-modal">&times;</button>
         <h3>Example IAM Policy</h3>
         <textarea id="policy-text" readonly></textarea>
+        <div id="policy-charcount" style="margin-top:4px;font-size:0.95em;color:#555;"></div>
+        <div id="policy-warning" class="error" style="display:none;margin-top:2px;">Warning: Policy exceeds 6144 characters (excluding spaces and linebreaks)!</div>
         <button id="copy-policy">Copy to Clipboard</button>
       </div>
     </div>
@@ -118,6 +120,23 @@ function renderResults(list) {
     const closeModal = document.getElementById('close-modal');
     const policyText = document.getElementById('policy-text');
     const copyBtn = document.getElementById('copy-policy');
+    const charCountDiv = document.getElementById('policy-charcount');
+    const warningDiv = document.getElementById('policy-warning');
+
+    function countNonSpaceChars(str) {
+        // Remove spaces and linebreaks, then count
+        return (str.replace(/[ \n\r\t]/g, '')).length;
+    }
+    function updateCharCountAndWarning() {
+        const val = policyText.value;
+        const count = countNonSpaceChars(val);
+        charCountDiv.textContent = `Character count (excluding spaces/linebreaks): ${count}`;
+        if (count > 6144) {
+            warningDiv.style.display = '';
+        } else {
+            warningDiv.style.display = 'none';
+        }
+    }
 
     function update() {
         errorDiv.textContent = '';
@@ -150,6 +169,7 @@ function renderResults(list) {
         }
         policyText.value = buildPolicy(filtered);
         modal.classList.add('active');
+        updateCharCountAndWarning();
     });
     closeModal.addEventListener('click', () => {
         modal.classList.remove('active');
@@ -160,6 +180,8 @@ function renderResults(list) {
         copyBtn.textContent = 'Copied!';
         setTimeout(() => { copyBtn.textContent = 'Copy to Clipboard'; }, 1200);
     });
+    // Update count/warning if user somehow edits textarea (future-proofing)
+    policyText.addEventListener('input', updateCharCountAndWarning);
     // Close modal on outside click
     modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.classList.remove('active');
