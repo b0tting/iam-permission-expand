@@ -368,12 +368,19 @@
         function updateCharCountAndWarning() {
           const val = policyText.value;
           const count = countNonSpaceChars(val);
-          charCountDiv.textContent = `Character count (excluding spaces/linebreaks): ${count}`;
+          
           if (count > 6144) {
+            // Show as warning when exceeding limit
+            charCountDiv.className = 'ui warning message';
+s            charCountDiv.innerHTML = `<i class="warning icon"></i>Character count (excluding spaces/linebreaks): <strong>${count}</strong> - exceeds permission policy 6144 character limit!`;
             warningDiv.style.display = "";
           } else {
+            // Show as normal info when under limit
+            charCountDiv.className = 'ui info message';
+            charCountDiv.textContent = `Character count (excluding spaces/linebreaks): ${count}`;
             warningDiv.style.display = "none";
           }
+          charCountDiv.style.display = 'block'; // Ensure it's visible
         }
 
         function update() {
