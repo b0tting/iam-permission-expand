@@ -103,18 +103,20 @@
         </div>
       </div>
       <div class="actions">
-        <button id="copy-policy" class="ui button">
-          <i class="copy icon"></i>
-          Copy to Clipboard
-        </button>
-        <button id="compact-policy" class="ui button primary">
-          <i class="compress icon"></i>
-          Compact Policy
-        </button>
-        <button id="close-modal" class="ui button">
-          <i class="close icon"></i>
-          Close
-        </button>
+        <div class="ui horizontal buttons">
+          <button id="copy-policy" class="ui button">
+            <i class="copy icon"></i>
+            Copy to Clipboard
+          </button>
+          <button id="compact-policy" class="ui button primary">
+            <i class="compress icon"></i>
+            Compact Policy
+          </button>
+          <button id="close-modal" class="ui button">
+            <i class="close icon"></i>
+            Close
+          </button>
+        </div>
       </div>
     </div>
     <script>
@@ -270,84 +272,110 @@
         return result;
       }
 
-      function compactActionGroup(actions) {
-        if (actions.length <= 1) return actions;
+        function compactActionGroup(actions) {
+    if (actions.length <= 1) return actions;
 
-        const result = [];
-        const used = new Set();
+    const result = [];
+    const used = new Set();
 
-        // Try to find groups of actions that can be compacted
-        for (let i = 0; i < actions.length; i++) {
-          if (used.has(i)) continue;
+    // Try to find groups of actions that can be compacted
+    for (let i = 0; i < actions.length; i++) {
+      if (used.has(i)) continue;
 
-          const group = [actions[i]];
-          used.add(i);
+      const group = [actions[i]];
+      used.add(i);
 
-          // Find other actions that can be compacted with this one
-          for (let j = i + 1; j < actions.length; j++) {
-            if (used.has(j)) continue;
+      // Find other actions that can be compacted with this one
+      for (let j = i + 1; j < actions.length; j++) {
+        if (used.has(j)) continue;
 
-            const compacted = findCommonPattern(group.concat([actions[j]]));
-            if (compacted) {
-              group.push(actions[j]);
-              used.add(j);
-            }
-          }
-
-          if (group.length > 1) {
-            // We found a group that can be compacted
-            const compacted = findCommonPattern(group);
-            result.push(compacted);
-          } else {
-            // No compaction possible, keep original
-            result.push(actions[i]);
-          }
+        const compacted = findCommonPattern(group.concat([actions[j]]));
+        if (compacted && compacted !== actions[j]) {
+          // Only add if the compacted pattern is different from the original action
+          group.push(actions[j]);
+          used.add(j);
         }
-
-        return result;
       }
 
-      function findCommonPattern(actions) {
-        if (actions.length <= 1) return actions[0];
-
-        // Find longest common prefix
-        const first = actions[0];
-        let prefixLen = 0;
-        for (let i = 0; i < first.length; i++) {
-          const char = first[i];
-          if (actions.every((action) => action[i] === char)) {
-            prefixLen++;
-          } else {
-            break;
-          }
-        }
-
-        // Find longest common suffix
-        let suffixLen = 0;
-        const minLength = Math.min(...actions.map((a) => a.length));
-        for (let i = 1; i <= minLength - prefixLen; i++) {
-          const char = first[first.length - i];
-          if (actions.every((action) => action[action.length - i] === char)) {
-            suffixLen++;
-          } else {
-            break;
-          }
-        }
-
-        const prefix = first.substring(0, prefixLen);
-        const suffix = first.substring(first.length - suffixLen);
-
-        // Check if we can create a meaningful pattern
-        if (prefixLen === 0 && suffixLen === 0) {
-          return null; // No common pattern found
-        }
-
-        if (suffixLen > 0) {
-          return `${prefix}*${suffix}`;
+      if (group.length > 1) {
+        // We found a group that can be compacted
+        const compacted = findCommonPattern(group);
+        // Only use compacted version if it's actually more compact than the original
+        if (compacted && compacted.length < group[0].length) {
+          result.push(compacted);
         } else {
-          return `${prefix}*`;
+          // Keep original actions if compaction doesn't help
+          group.forEach(action => result.push(action));
         }
+      } else {
+        // No compaction possible, keep original
+        result.push(actions[i]);
       }
+    }
+
+    return result;
+  }
+
+        function findCommonPattern(actions) {
+    if (actions.length <= 1) return actions[0];
+
+    // Find longest common prefix
+    const first = actions[0];
+    let prefixLen = 0;
+    for (let i = 0; i < first.length; i++) {
+      const char = first[i];
+      if (actions.every((action) => action[i] === char)) {
+        prefixLen++;
+      } else {
+        break;
+      }
+    }
+
+    // Find longest common suffix
+    let suffixLen = 0;
+    const minLength = Math.min(...actions.map((a) => a.length));
+    for (let i = 1; i <= minLength - prefixLen; i++) {
+      const char = first[first.length - i];
+      if (actions.every((action) => action[action.length - i] === char)) {
+        suffixLen++;
+      } else {
+        break;
+      }
+    }
+
+    const prefix = first.substring(0, prefixLen);
+    const suffix = first.substring(first.length - suffixLen);
+
+    // Check if we can create a meaningful pattern
+    if (prefixLen === 0 && suffixLen === 0) {
+      return null; // No common pattern found
+    }
+
+    // Only create patterns if we have meaningful common parts
+    if (prefixLen < 2 && suffixLen < 2) {
+      return null; // Not enough common pattern to be meaningful
+    }
+
+    // Ensure we don't create multiple consecutive asterisks
+    if (suffixLen > 0) {
+      // Check if prefix ends with * or suffix starts with *
+      const prefixEndsWithAsterisk = prefix.endsWith('*');
+      const suffixStartsWithAsterisk = suffix.startsWith('*');
+      
+      if (prefixEndsWithAsterisk && suffixStartsWithAsterisk) {
+        // Both have asterisks, use just one
+        return `${prefix}${suffix.substring(1)}`;
+      } else if (prefixEndsWithAsterisk || suffixStartsWithAsterisk) {
+        // One has asterisk, use it
+        return `${prefix}${suffix}`;
+      } else {
+        // Neither has asterisk, add one in the middle
+        return `${prefix}*${suffix}`;
+      }
+    } else {
+      return `${prefix}*`;
+    }
+  }
 
       function extractPermissionsFromPolicyJson(jsonString) {
         const permissions = [];
