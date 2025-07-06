@@ -404,18 +404,37 @@
           const val = policyText.value;
           const count = countNonSpaceChars(val);
           
-          if (count > 6144) {
+          // Check if content is valid JSON
+          let jsonValid = true;
+          let jsonError = '';
+          if (val.trim()) {
+            try {
+              JSON.parse(val);
+            } catch (e) {
+              jsonValid = false;
+              jsonError = e.message;
+            }
+          }
+          
+          if (!jsonValid) {
+            // Show JSON validation error
+            charCountDiv.className = 'ui negative message';
+            charCountDiv.innerHTML = `<i class="close icon"></i><strong>Invalid JSON:</strong> ${jsonError}`;
+            charCountDiv.style.display = 'block';
+            warningDiv.style.display = "none";
+          } else if (count > 6144) {
             // Show as warning when exceeding limit
             charCountDiv.className = 'ui warning message';
             charCountDiv.innerHTML = `<i class="warning icon"></i>Character count (excluding spaces/linebreaks): <strong>${count}</strong> - exceeds permission policy 6144 character limit!`;
             warningDiv.style.display = "";
+            charCountDiv.style.display = 'block';
           } else {
             // Show as normal info when under limit
             charCountDiv.className = 'ui info message';
             charCountDiv.textContent = `Character count (excluding spaces/linebreaks): ${count}`;
             warningDiv.style.display = "none";
+            charCountDiv.style.display = 'block';
           }
-          charCountDiv.style.display = 'block'; // Ensure it's visible
         }
 
         function update() {
@@ -512,8 +531,9 @@
             alert("Error compacting policy: " + error.message);
           }
         });
-        // Update count/warning if user somehow edits textarea (future-proofing)
+        // Update count/warning and validate JSON on every input change
         policyText.addEventListener("input", updateCharCountAndWarning);
+        policyText.addEventListener("change", updateCharCountAndWarning);
         // Modal will handle outside clicks automatically with Fomantic UI
       })();
     </script>
