@@ -1,198 +1,479 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AWS IAM Permission Search</title>
-    <link href="https://fonts.googleapis.com/css?family=Roboto:400,500&display=swap" rel="stylesheet">
+    <link
+      href="https://fonts.googleapis.com/css?family=Roboto:400,500&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.css"
+    />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.js"></script>
     <style>
-body{font-family:'Roboto',sans-serif;background:#f7f9fa;margin:0}
-.container{max-width:700px;margin:40px auto;background:#fff;border-radius:6px;box-shadow:0 2px 8px #0001;padding:24px}
-h1{font-size:1.5rem}
-input[type="text"],#policy-text{width:100%;font-size:1rem;font-family:'Roboto',sans-serif;background-color:#f0f0f0;border:1px solid #ccc;padding:8px;border-radius:4px;box-sizing:border-box}
-input[type="text"]{margin-bottom:16px}
-ul{padding:0}
-li{padding:6px 0;border-bottom:1px solid #eee;list-style:none}
-.count{color:#888;font-size:.95em}
-.error{color:#c00}
-#modal{display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:#0008;z-index:1000;align-items:center;justify-content:center}
-#modal.active{display:flex}
-#modal .modal-content{background:#fff;padding:24px;border-radius:8px;width:80vw;height:80vh;max-width:80vw;max-height:80vh;overflow:auto;position:relative}
-#close-modal{position:absolute;top:8px;right:8px;background:none;border:none;font-size:1.5em;cursor:pointer}
-#policy-text{height:65vh;width:100%;font-family:'Roboto',monospace}
-#copy-policy{margin-top:8px}
-.leader{display:flex;gap:8px;align-items:center}
+      body {
+        font-family: "Roboto", sans-serif;
+      }
+      .ui.container {
+        margin-top: 2rem;
+      }
+      #policy-text {
+        font-family: "Roboto", monospace;
+      }
+      #results {
+        max-height: calc(100vh - 300px);
+        min-height: 400px;
+        overflow-y: auto;
+      }
+      .ui.modal {
+        max-height: 80vh;
+      }
+      .ui.modal .content {
+        max-height: 60vh;
+        overflow-y: auto;
+      }
     </style>
-</head>
-<body>
-<div class="container">
-    <h1>AWS IAM Permission Expander</h1>
-    <h4>Show all permissions that will be given when using an IAM wildcard, based on the IAM permission list from <a href="https://github.com/iann0036/iam-dataset">iann0036/iam-dataset</a></h4>
-    <div class="leader">
-        <input id="search" type="text" placeholder="Search permissions (e.g. s3:*, s3:*Access*, *:*List, ec2)" autocomplete="off" />
-        <button id="gen-policy" type="button">Generate Policy</button>
-    </div>
-    <div class="count" id="count"></div>
-    <div class="error" id="error"></div>
-    <ul id="results"></ul>
-    <div id="modal">
-      <div class="modal-content">
-        <button id="close-modal">&times;</button>
-        <h3>Example IAM Policy</h3>
-        <textarea id="policy-text"></textarea>
-        <div id="policy-charcount" style="margin-top:4px;font-size:0.95em;color:#555;"></div>
-        <div id="policy-warning" class="error" style="display:none;margin-top:2px;">Warning: Policy exceeds 6144 characters (excluding spaces and linebreaks)!</div>
-        <button id="copy-policy">Copy to Clipboard</button>
+  </head>
+  <body>
+    <div class="ui container">
+      <div class="ui segment">
+        <h1 class="ui header">
+          <i class="aws icon"></i>
+          <div class="content">
+            AWS IAM Permission Expander
+            <div class="sub header">
+              Show all permissions that will be given when using an IAM
+              wildcard, based on the IAM permission list from
+              <a href="https://github.com/iann0036/iam-dataset"
+                >iann0036/iam-dataset</a
+              >.
+            </div>
+          </div>
+        </h1>
+
+        <div class="ui fluid action input">
+          <input
+            id="search"
+            type="text"
+            placeholder="Search permissions (e.g. s3:*, s3:*Access*, *:*List, ec2)"
+            autocomplete="off"
+          />
+          <button id="gen-policy" class="ui button primary">
+            Generate Policy
+          </button>
+        </div>
+
+        <div class="ui info message" id="count" style="display: none"></div>
+        <div class="ui negative message" id="error" style="display: none"></div>
+
+        <div class="ui list" id="results"></div>
       </div>
     </div>
-</div>
-<script>
-async function loadPermissions() {
-    try {
-        const response = await fetch('https://raw.githubusercontent.com/iann0036/iam-dataset/refs/heads/main/aws/map.json');
-        if (!response.ok) throw new Error('Failed to load map.json');
-        const data = await response.json();
-        const mappings = data.sdk_method_iam_mappings || {};
-        // Extract all unique permission names
-        const permissions = new Set();
-        Object.values(mappings).forEach(val => {
+
+    <!-- Modal -->
+    <div id="modal" class="ui modal">
+      <div class="header">
+        <i class="file code icon"></i>
+        Example IAM Policy
+      </div>
+      <div class="content">
+        <div class="ui form">
+          <div class="field">
+            <label>Policy JSON</label>
+            <textarea
+              id="policy-text"
+              rows="15"
+              placeholder="Policy will appear here..."
+            ></textarea>
+          </div>
+          <div class="ui info message" id="policy-charcount"></div>
+          <div
+            class="ui warning message"
+            id="policy-warning"
+            style="display: none"
+          >
+            <i class="warning icon"></i>
+            Warning: Policy exceeds 6144 characters (excluding spaces and
+            linebreaks)!
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="copy-policy" class="ui button">
+          <i class="copy icon"></i>
+          Copy to Clipboard
+        </button>
+        <button id="compact-policy" class="ui button primary">
+          <i class="compress icon"></i>
+          Compact Policy
+        </button>
+        <button id="close-modal" class="ui button">
+          <i class="close icon"></i>
+          Close
+        </button>
+      </div>
+    </div>
+    <script>
+      // Most of this was vibecoded, which Cursor did all too well! Amazing!
+      async function loadPermissions() {
+        try {
+          const response = await fetch(
+            "https://raw.githubusercontent.com/iann0036/iam-dataset/refs/heads/main/aws/map.json",
+          );
+          if (!response.ok) throw new Error("Failed to load map.json");
+          const data = await response.json();
+          const mappings = data.sdk_method_iam_mappings || {};
+          // Extract all unique permission names
+          const permissions = new Set();
+          Object.values(mappings).forEach((val) => {
             if (Array.isArray(val)) {
-                val.forEach(item => {
-                    if (typeof item === 'string') {
-                        permissions.add(item);
-                    } else if (item && typeof item === 'object' && item.action) {
-                        permissions.add(item.action);
-                    }
-                });
-            } else if (typeof val === 'string') {
-                permissions.add(val);
-            } else if (val && typeof val === 'object' && val.action) {
-                permissions.add(val.action);
-            }
-        });
-        return Array.from(permissions).sort();
-    } catch (e) {
-        document.getElementById('error').textContent = e.message;
-        return [];
-    }
-}
-
-function wildcardToRegExp(pattern) {
-    // Escape regex special chars except *
-    const esc = pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
-    // Replace * with .*
-    return new RegExp('^' + esc.replace(/\*/g, '.*') + '$', 'i');
-}
-
-function filterPermissions(permissions, query) {
-    if (!query) return permissions;
-    query = query.trim();
-    // If only service name (e.g. s3), show all permissions for that service
-    if (/^[a-z0-9]+$/i.test(query)) {
-        return permissions.filter(p => p.toLowerCase().startsWith(query.toLowerCase() + ':'));
-    }
-    // If contains *, treat as wildcard
-    if (query.includes('*')) {
-        const re = wildcardToRegExp(query);
-        return permissions.filter(p => re.test(p));
-    }
-    // Otherwise, show only exact matches
-    return permissions.filter(p => p.toLowerCase() === query.toLowerCase());
-}
-
-function renderResults(list) {
-    const ul = document.getElementById('results');
-    ul.innerHTML = '';
-    list.forEach(p => {
-        const li = document.createElement('li');
-        li.textContent = p;
-        ul.appendChild(li);
-    });
-    document.getElementById('count').textContent = `${list.length} permission(s) found.`;
-}
-
-(async function() {
-    const permissions = await loadPermissions();
-    const input = document.getElementById('search');
-    const errorDiv = document.getElementById('error');
-    const genBtn = document.getElementById('gen-policy');
-    const modal = document.getElementById('modal');
-    const closeModal = document.getElementById('close-modal');
-    const policyText = document.getElementById('policy-text');
-    const copyBtn = document.getElementById('copy-policy');
-    const charCountDiv = document.getElementById('policy-charcount');
-    const warningDiv = document.getElementById('policy-warning');
-
-    function countNonSpaceChars(str) {
-        // Remove spaces and linebreaks, then count
-        return (str.replace(/[ \n\r\t]/g, '')).length;
-    }
-    function updateCharCountAndWarning() {
-        const val = policyText.value;
-        const count = countNonSpaceChars(val);
-        charCountDiv.textContent = `Character count (excluding spaces/linebreaks): ${count}`;
-        if (count > 6144) {
-            warningDiv.style.display = '';
-        } else {
-            warningDiv.style.display = 'none';
-        }
-    }
-
-    function update() {
-        errorDiv.textContent = '';
-        const query = input.value;
-        const filtered = filterPermissions(permissions, query);
-        renderResults(filtered);
-    }
-    input.addEventListener('focus', () => {
-        if (input.value === '') {
-            input.value = '*';
-            input.setSelectionRange(0, 0);
-        }
-    });
-    input.addEventListener('input', update);
-    renderResults(permissions);
-
-    function buildPolicy(perms) {
-        return JSON.stringify({
-            Version: "2012-10-17",
-            Statement: [
-                {
-                    Effect: "Allow",
-                    Action: perms,
-                    Resource: "*"
+              val.forEach((item) => {
+                if (typeof item === "string") {
+                  permissions.add(item);
+                } else if (item && typeof item === "object" && item.action) {
+                  permissions.add(item.action);
                 }
-            ]
-        }, null, 2);
-    }
-
-    genBtn.addEventListener('click', () => {
-        const query = input.value;
-        const filtered = filterPermissions(permissions, query);
-        if (filtered.length === 0) {
-            errorDiv.textContent = 'No permissions to generate policy.';
-            return;
+              });
+            } else if (typeof val === "string") {
+              permissions.add(val);
+            } else if (val && typeof val === "object" && val.action) {
+              permissions.add(val.action);
+            }
+          });
+          return Array.from(permissions).sort();
+        } catch (e) {
+          document.getElementById("error").textContent = e.message;
+          return [];
         }
-        policyText.value = buildPolicy(filtered);
-        modal.classList.add('active');
-        updateCharCountAndWarning();
-    });
-    closeModal.addEventListener('click', () => {
-        modal.classList.remove('active');
-    });
-    copyBtn.addEventListener('click', () => {
-        policyText.select();
-        document.execCommand('copy');
-        copyBtn.textContent = 'Copied!';
-        setTimeout(() => { copyBtn.textContent = 'Copy to Clipboard'; }, 1200);
-    });
-    // Update count/warning if user somehow edits textarea (future-proofing)
-    policyText.addEventListener('input', updateCharCountAndWarning);
-    // Close modal on outside click
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.classList.remove('active');
-    });
-})();
-</script>
-</body>
+      }
+
+      function wildcardToRegExp(pattern) {
+        // Escape regex special chars except *
+        const esc = pattern.replace(/[-/\\^$+?.()|[\]{}]/g, "\\$&");
+        // Replace * with .*
+        return new RegExp("^" + esc.replace(/\*/g, ".*") + "$", "i");
+      }
+
+      function filterPermissions(permissions, query) {
+        if (!query) return permissions;
+        query = query.trim();
+        // If only service name (e.g. s3), show all permissions for that service
+        if (/^[a-z0-9]+$/i.test(query)) {
+          return permissions.filter((p) =>
+            p.toLowerCase().startsWith(query.toLowerCase() + ":"),
+          );
+        }
+        // If contains *, treat as wildcard
+        if (query.includes("*")) {
+          const re = wildcardToRegExp(query);
+          return permissions.filter((p) => re.test(p));
+        }
+        // Otherwise, show only exact matches
+        return permissions.filter(
+          (p) => p.toLowerCase() === query.toLowerCase(),
+        );
+      }
+
+      function renderResults(list) {
+        const resultsDiv = document.getElementById("results");
+        const countDiv = document.getElementById("count");
+
+        resultsDiv.innerHTML = "";
+
+        if (list.length === 0) {
+          // Show helpful message when no results found
+          const noResultsDiv = document.createElement("div");
+          noResultsDiv.className = "ui info message";
+          noResultsDiv.innerHTML = `
+            <i class="info circle icon"></i>
+            <div class="content">
+                <div class="header">No permissions found</div>
+                <p>Try adding a wildcard (*) as a suffix to your search. For example:</p>
+                <ul>
+                    <li><code>s3:*</code> - all S3 permissions</li>
+                    <li><code>ec2:Describe*</code> - all EC2 Describe permissions</li>
+                    <li><code>*:List*</code> - all List permissions across services</li>
+                </ul>
+            </div>
+        `;
+          resultsDiv.appendChild(noResultsDiv);
+          countDiv.style.display = "none";
+        } else {
+          // Show results as normal
+          list.forEach((p) => {
+            const item = document.createElement("div");
+            item.className = "item";
+            item.textContent = p;
+            resultsDiv.appendChild(item);
+          });
+
+          countDiv.textContent = `${list.length} permission(s) found.`;
+          countDiv.style.display = "block";
+        }
+      }
+
+      function compactPermissions(permissions) {
+        // Group by service
+        const serviceMap = {};
+        for (const perm of permissions) {
+          const [service, action] = perm.split(":");
+          if (!serviceMap[service]) serviceMap[service] = [];
+          serviceMap[service].push(action);
+        }
+
+        const result = [];
+
+        for (const service in serviceMap) {
+          const actions = serviceMap[service];
+          const compacted = compactActionGroup(actions);
+          result.push(...compacted.map((action) => `${service}:${action}`));
+        }
+
+        return result;
+      }
+
+      function compactActionGroup(actions) {
+        if (actions.length <= 1) return actions;
+
+        const result = [];
+        const used = new Set();
+
+        // Try to find groups of actions that can be compacted
+        for (let i = 0; i < actions.length; i++) {
+          if (used.has(i)) continue;
+
+          const group = [actions[i]];
+          used.add(i);
+
+          // Find other actions that can be compacted with this one
+          for (let j = i + 1; j < actions.length; j++) {
+            if (used.has(j)) continue;
+
+            const compacted = findCommonPattern(group.concat([actions[j]]));
+            if (compacted) {
+              group.push(actions[j]);
+              used.add(j);
+            }
+          }
+
+          if (group.length > 1) {
+            // We found a group that can be compacted
+            const compacted = findCommonPattern(group);
+            result.push(compacted);
+          } else {
+            // No compaction possible, keep original
+            result.push(actions[i]);
+          }
+        }
+
+        return result;
+      }
+
+      function findCommonPattern(actions) {
+        if (actions.length <= 1) return actions[0];
+
+        // Find longest common prefix
+        const first = actions[0];
+        let prefixLen = 0;
+        for (let i = 0; i < first.length; i++) {
+          const char = first[i];
+          if (actions.every((action) => action[i] === char)) {
+            prefixLen++;
+          } else {
+            break;
+          }
+        }
+
+        // Find longest common suffix
+        let suffixLen = 0;
+        const minLength = Math.min(...actions.map((a) => a.length));
+        for (let i = 1; i <= minLength - prefixLen; i++) {
+          const char = first[first.length - i];
+          if (actions.every((action) => action[action.length - i] === char)) {
+            suffixLen++;
+          } else {
+            break;
+          }
+        }
+
+        const prefix = first.substring(0, prefixLen);
+        const suffix = first.substring(first.length - suffixLen);
+
+        // Check if we can create a meaningful pattern
+        if (prefixLen === 0 && suffixLen === 0) {
+          return null; // No common pattern found
+        }
+
+        if (suffixLen > 0) {
+          return `${prefix}*${suffix}`;
+        } else {
+          return `${prefix}*`;
+        }
+      }
+
+      function extractPermissionsFromPolicyJson(jsonString) {
+        const permissions = [];
+
+        let policy;
+        try {
+          policy = JSON.parse(jsonString);
+        } catch (e) {
+          throw new Error("Invalid JSON input.");
+        }
+
+        const statements = Array.isArray(policy.Statement)
+          ? policy.Statement
+          : [policy.Statement];
+
+        for (const stmt of statements) {
+          const keys = ["Action", "NotAction"];
+          for (const key of keys) {
+            if (!stmt[key]) continue;
+            const actions = Array.isArray(stmt[key]) ? stmt[key] : [stmt[key]];
+
+            for (const action of actions) {
+              // Skip wildcards like "*"
+              if (action === "*") continue;
+
+              permissions.push(action);
+            }
+          }
+        }
+
+        return permissions;
+      }
+
+      (async function () {
+        const permissions = await loadPermissions();
+        const input = document.getElementById("search");
+        const errorDiv = document.getElementById("error");
+        const genBtn = document.getElementById("gen-policy");
+        const modal = document.getElementById("modal");
+        const closeModal = document.getElementById("close-modal");
+        const policyText = document.getElementById("policy-text");
+        const copyBtn = document.getElementById("copy-policy");
+        const compactBtn = document.getElementById("compact-policy");
+        const charCountDiv = document.getElementById("policy-charcount");
+        const warningDiv = document.getElementById("policy-warning");
+
+        function countNonSpaceChars(str) {
+          // Remove spaces and linebreaks, then count
+          return str.replace(/[ \n\r\t]/g, "").length;
+        }
+
+        function updateCharCountAndWarning() {
+          const val = policyText.value;
+          const count = countNonSpaceChars(val);
+          charCountDiv.textContent = `Character count (excluding spaces/linebreaks): ${count}`;
+          if (count > 6144) {
+            warningDiv.style.display = "";
+          } else {
+            warningDiv.style.display = "none";
+          }
+        }
+
+        function update() {
+          errorDiv.textContent = "";
+          errorDiv.style.display = "none";
+          const query = input.value;
+          const filtered = filterPermissions(permissions, query);
+          renderResults(filtered);
+        }
+        input.addEventListener("focus", () => {
+          if (input.value === "") {
+            input.value = "*";
+            input.setSelectionRange(0, 0);
+          }
+        });
+        input.addEventListener("input", update);
+        renderResults(permissions);
+
+        function buildPolicy(perms) {
+          return JSON.stringify(
+            {
+              Version: "2012-10-17",
+              Statement: [
+                {
+                  Effect: "Allow",
+                  Action: perms,
+                  Resource: "*",
+                },
+              ],
+            },
+            null,
+            2,
+          );
+        }
+
+        genBtn.addEventListener("click", () => {
+          const query = input.value;
+          const filtered = filterPermissions(permissions, query);
+          if (filtered.length === 0) {
+            errorDiv.textContent = "No permissions to generate policy.";
+            errorDiv.style.display = "block";
+            return;
+          }
+          policyText.value = buildPolicy(filtered);
+          $(modal).modal("show");
+          updateCharCountAndWarning();
+        });
+        closeModal.addEventListener("click", () => {
+          $(modal).modal("hide");
+        });
+        copyBtn.addEventListener("click", () => {
+          policyText.select();
+          document.execCommand("copy");
+          copyBtn.textContent = "Copied!";
+          setTimeout(() => {
+            copyBtn.textContent = "Copy to Clipboard";
+          }, 1200);
+        });
+
+        compactBtn.addEventListener("click", () => {
+          try {
+            const currentPolicy = policyText.value;
+            if (!currentPolicy.trim()) {
+              alert("No policy to compact. Please generate a policy first.");
+              return;
+            }
+
+            // Extract permissions from the current policy
+            const extractedPermissions =
+              extractPermissionsFromPolicyJson(currentPolicy);
+
+            if (extractedPermissions.length === 0) {
+              alert("No permissions found in the policy to compact.");
+              return;
+            }
+
+            // Compact the permissions
+            const compactedPermissions =
+              compactPermissions(extractedPermissions);
+
+            // Rebuild the policy with compacted permissions
+            const compactedPolicy = buildPolicy(compactedPermissions);
+
+            // Update the textarea with the compacted policy
+            policyText.value = compactedPolicy;
+
+            // Update character count and warning
+            updateCharCountAndWarning();
+
+            // Show success message and hide the button
+            compactBtn.textContent = "Compacted!";
+            compactBtn.style.display = "none";
+          } catch (error) {
+            alert("Error compacting policy: " + error.message);
+          }
+        });
+        // Update count/warning if user somehow edits textarea (future-proofing)
+        policyText.addEventListener("input", updateCharCountAndWarning);
+        // Modal will handle outside clicks automatically with Fomantic UI
+      })();
+    </script>
+  </body>
 </html>
