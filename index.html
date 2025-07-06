@@ -50,8 +50,7 @@
               Show all permissions that will match when using IAM
               wildcards, based on the IAM permission list from
               <a href="https://github.com/iann0036/iam-dataset"
-                >iann0036/iam-dataset</a
-              >.
+                >iann0036/iam-dataset</a>. Allows generating and compacting policies.
             </div>
           </div>
         </h1>
@@ -435,6 +434,10 @@
             warningDiv.style.display = "none";
             charCountDiv.style.display = 'block';
           }
+          
+          // Reset compact button when content changes
+          compactBtn.style.display = 'block';
+          compactBtn.textContent = 'Compact Policy';
         }
 
         function update() {
